@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Vārdu tīkla spēle — kombinē latviešu valodas klucīšus, atklāj vārdus un audzē dzīvu vārdu karti.">
+  <meta name="theme-color" content="#080d12">
+  <title>Vārdu tīkls — ResearchGames.eu</title>
+  <link rel="icon" href="assets/brand/researchgames-icon-color.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tree.css?v=13">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <a class="brand" href="https://researchgames.eu/" target="_blank" rel="noreferrer" aria-label="ResearchGames.eu">
+        <img src="assets/brand/researchgames-logo-color-dark.svg" alt="ResearchGames.eu">
+      </a>
+      <div class="game-identity" aria-label="Spēles nosaukums">
+        <span>VĀRDU TĪKLS</span>
+        <small>LATVIEŠU VALODAS SPĒLE</small>
+      </div>
+      <button class="reset" id="resetButton" type="button">↻ SĀKT NO JAUNA</button>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow"><span>EKSPERIMENTS 01</span><span>LATVIEŠU VALODA</span></div>
+      <h1>SALIEC VĀRDU.<br><em>ATKLĀJ SISTĒMU.</em></h1>
+      <p>Kombinē valodas klucīšus. Katrs atrastais vārds var atvērt jaunas iespējas.</p>
+    </section>
+
+    <section class="game-grid">
+      <section class="workspace" aria-label="Spēles darba lauks">
+        <div class="panel-heading"><span>01 / DARBA LAUKS</span><span class="status-dot">● AKTĪVS</span></div>
+        <div class="assembly" id="assembly" aria-live="polite"></div>
+        <div class="word-preview" id="wordPreview">—</div>
+
+        <p class="block-label">PIEEJAMIE KLUCĪŠI</p>
+        <div class="blocks" id="blocks"></div>
+
+        <button class="check" id="checkButton" type="button">PĀRBAUDĪT VĀRDU <span>→</span></button>
+        <div class="feedback" id="feedback" role="status">Izvēlies klucīšus un atrodi pirmo vārdu.</div>
+        <div class="unlock-note" id="unlockNote" hidden></div>
+      </section>
+
+      <aside class="research-panel">
+        <div class="panel-heading"><span>02 / PĒTĪJUMA ŽURNĀLS</span><span id="score">0 VĀRDI</span></div>
+        <div class="progress-row"><span>TĪKLA IZAUGSME</span><span id="progressText">0 MEZGLI</span></div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="progressBar"></i></div>
+        <div class="discoveries" id="discoveries"></div>
+        <div class="next-step"><span>NĀKAMAIS SLIEKSNIS</span><b id="nextStep">0/1 ATKLĀJUMI</b></div>
+      </aside>
+    </section>
+
+    <section class="network-panel" aria-labelledby="networkTitle">
+      <div class="panel-heading"><span id="networkTitle">03 / VĀRDU SAVIENOJUMU TĪKLS</span><span id="networkCount">0 SAVIENOJUMI</span></div>
+      <p class="network-help">Tīkls nav sagatavots iepriekš. Katrs Tēzaurā apstiprinātais vārds kļūst par jaunu mezglu un pieslēdzas radniecīgākajam atklājumam.</p>
+      <div class="word-network" id="wordNetwork">
+        <canvas id="wordCanvas" aria-label="Dinamisks atklāto vārdu fizikas tīkls"></canvas>
+        <section class="map-composer" aria-label="Salikt jaunu vārdu, paliekot kartē">
+          <div class="map-composer-head"><span>JAUNS VĀRDS</span><b id="mapWordPreview">—</b></div>
+          <div class="map-assembly" id="mapAssembly"></div>
+          <div class="map-blocks" id="mapBlocks"></div>
+          <button class="map-check" id="mapCheckButton" type="button">PĀRBAUDĪT <span>→</span></button>
+          <p class="map-feedback" id="mapFeedback">Izvēlies klucīšus.</p>
+        </section>
+        <aside class="map-journal" aria-label="Atklāto vārdu žurnāls">
+          <div class="map-journal-head"><span>ATKLĀTIE VĀRDI</span><b id="mapScore">0 PUNKTI</b></div>
+          <div class="map-expansion"><span>NĀKAMAIS PAPLAŠINĀJUMS</span><strong id="mapNextStep">0/2 VĀRDI</strong></div>
+          <section class="map-missions" aria-label="Spēlētāja misijas">
+            <div class="map-missions-head"><span>MISIJAS</span><b id="missionCount">0 IZPILDĪTAS</b></div>
+            <div id="missionList"></div>
+          </section>
+          <div class="map-discoveries" id="mapDiscoveries"></div>
+        </aside>
+        <div class="definition-toast" id="definitionToast" hidden aria-live="polite">
+          <span>JAUNS ATKLĀJUMS</span><b id="definitionWord"></b><p id="definitionText"></p>
+        </div>
+        <div class="map-controls" aria-label="Tīkla kartes vadība">
+          <button type="button" id="zoomOut" aria-label="Attālināt">−</button>
+          <button type="button" id="resetView" aria-label="Parādīt visu karti">◎</button>
+          <button type="button" id="zoomIn" aria-label="Pietuvināt">+</button>
+        </div>
+        <span class="map-hint">VELC FONU · RITINI, LAI MAINĪTU MĒROGU</span>
+      </div>
+    </section>
+
+    <footer><span>DEMO / V0.1</span><span>DOMĀ. MĒĢINI. ATKLĀJ.</span></footer>
+  </main>
+  <div class="level-modal" id="levelModal" hidden role="dialog" aria-modal="true" aria-labelledby="levelTitle">
+    <section class="level-card">
+      <span class="level-kicker" id="levelKicker">PAPLAŠINĀJUMS</span>
+      <h2 id="levelTitle">Izvēlies nākamo klucīti</h2>
+      <p id="levelDescription">Izvēlies vienu no trim iespējām.</p>
+      <div class="unlock-choices" id="unlockChoices"></div>
+    </section>
+  </div>
+  <script src="tezaurs-words.js?v=2"></script>
+  <script src="tezaurs-index.js?v=8"></script>
+  <script src="tezaurs-dialects.js?v=5"></script>
+  <script src="script.js?v=64"></script>
+</body>
+</html>
