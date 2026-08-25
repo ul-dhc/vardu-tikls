@@ -45,14 +45,23 @@ function canBuildFrom(word,texts){const parts=new Uint8Array(word.length+1);part
 function canAlreadyBuildBlock(piece){const texts=[...unlockedBlocks].map(id=>blocks.find(block=>block.id===id)?.text||id),parts=canBuildFrom(piece,texts);return parts!==255&&parts>=2}
 function canOfferExpansionBlock(piece){return!unlockedBlocks.has(piece)&&!reservedMissionRewards.has(piece)&&!canAlreadyBuildBlock(piece)}
 function blocksTooSimilar(one,two){const a=[...one],b=[...two],shorter=Math.min(a.length,b.length);if(shorter<2)return false;const rows=Array.from({length:a.length+1},()=>new Uint8Array(b.length+1));for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)rows[i][j]=a[i-1]===b[j-1]?rows[i-1][j-1]+1:Math.max(rows[i-1][j],rows[i][j-1]);return rows[a.length][b.length]/shorter>=.75}
-function reachableWordCount(extraBlocks,target){const texts=[...new Set([...unlockedBlocks,...extraBlocks])].map(id=>blocks.find(block=>block.id===id)?.text||id),cacheKey=[...texts].sort().join("|")+":"+target;if(reachabilityCache.has(cacheKey))return reachabilityCache.get(cacheKey);let count=0;for(const word of tezaursWordList){const parts=canBuildFrom(word,texts);if(parts!==255&&(parts>=2||[...word].length>=3)&&++count>=target)break}reachabilityCache.set(cacheKey,count);return count}
-function newReachableWordCount(extraBlocks,target=12){const base=[...unlockedBlocks].map(id=>blocks.find(block=>block.id===id)?.text||id),expanded=[...new Set([...base,...extraBlocks])];let count=0;for(const word of tezaursWordList){const parts=canBuildFrom(word,expanded);if(parts!==255&&(parts>=2||[...word].length>=3)&&canBuildFrom(word,base)===255&&++count>=target)break}return count}
+function countConstructibleWords(texts,target,excludeTexts=[]){
+  const pieces=[...new Set(texts)].filter(Boolean),seen=new Set(),foundWords=new Set();let frontier=new Set([""]),operations=0;
+  for(let depth=1;depth<=7&&frontier.size;depth++){
+    const next=new Set();
+    for(const prefix of frontier)for(const piece of pieces){if(++operations>120000)return foundWords.size;const candidate=prefix+piece;if(candidate.length>24||seen.has(candidate))continue;seen.add(candidate);next.add(candidate);if(tezaursDataset.has(candidate)&&(depth>=2||[...candidate].length>=3)&&(!excludeTexts.length||canBuildFrom(candidate,excludeTexts)===255)){foundWords.add(candidate);if(foundWords.size>=target)return foundWords.size}}
+    frontier=next;
+  }
+  return foundWords.size;
+}
+function reachableWordCount(extraBlocks,target){const texts=[...new Set([...unlockedBlocks,...extraBlocks])].map(id=>blocks.find(block=>block.id===id)?.text||id),cacheKey=[...texts].sort().join("|")+":"+target;if(reachabilityCache.has(cacheKey))return reachabilityCache.get(cacheKey);const count=countConstructibleWords(texts,target);reachabilityCache.set(cacheKey,count);return count}
+function newReachableWordCount(extraBlocks,target=12){const base=[...unlockedBlocks].map(id=>blocks.find(block=>block.id===id)?.text||id),expanded=[...new Set([...base,...extraBlocks])];return countConstructibleWords(expanded,target,base)}
 function firstExamples(id){const baseTexts=baseBlockIds.map(blockId=>blocks.find(block=>block.id===blockId)?.text||blockId),withNew=[...baseTexts,id],examples=[];for(const word of tezaursWordList){if(examples.length===3)break;if(word.includes(activeFamily.root)&&canBuildFrom(word,withNew)!==255&&canBuildFrom(word,baseTexts)===255)examples.push(word)}return examples.join(" · ")||id+activeFamily.root}
 function isCommonDictionaryWord(word){return Object.values(tezaursPos).some(set=>set.has(word))&&!tezaursDialectWords.has(word)&&!tezaursHistoricWords.has(word)}
 function firstExpansionOptions(){
   const target=expansionThreshold(1),baseTexts=baseBlockIds.map(id=>blocks.find(block=>block.id===id)?.text||id),candidates=new Map(),add=(piece,word,suffix)=>{const length=[...piece].length;if((length!==2&&length!==3)||!canOfferExpansionBlock(piece))return;const withPiece=[...baseTexts,piece];if(canBuildFrom(word,baseTexts)!==255||canBuildFrom(word,withPiece)===255)return;const item=candidates.get(piece)||{id:piece,examples:[],common:new Set(),suffixes:0};if(item.examples.length<3&&!item.examples.includes(word))item.examples.push(word);if(isCommonDictionaryWord(word))item.common.add(word);if(suffix)item.suffixes++;candidates.set(piece,item)};
   for(const word of tezaursWordList){if([...word].length>18)continue;for(const source of baseTexts){if(word.length<=source.length)continue;if(word.startsWith(source))add(word.slice(source.length),word,true);if(word.endsWith(source))add(word.slice(0,-source.length),word,false)}}
-  const ranked=[...candidates.values()].map(item=>({...item,random:Math.random()})).sort((a,b)=>(b.common.size-a.common.size)||(b.suffixes-a.suffixes)||(b.examples.length-a.examples.length)||(a.random-b.random)),eligible=ranked.filter(item=>reachableWordCount([item.id],target)>=target),pool=(eligible.length>=3?eligible:ranked).slice(0,18);
+  const ranked=[...candidates.values()].map(item=>({...item,random:Math.random()})).sort((a,b)=>(b.common.size-a.common.size)||(b.suffixes-a.suffixes)||(b.examples.length-a.examples.length)||(a.random-b.random)),shortlist=ranked.slice(0,36),eligible=shortlist.filter(item=>reachableWordCount([item.id],target)>=target),pool=(eligible.length>=3?eligible:shortlist).slice(0,18);
   const options=randomOptions(pool).map(item=>({blocks:[item.id],example:item.examples.join(" · ")}));if(options.length>=3)return options;
   const fallback=activeFamily.first.filter(id=>canOfferExpansionBlock(id)&&!options.some(option=>option.blocks[0]===id)).map(id=>({blocks:[id],example:firstExamples(id)}));return[...options,...randomOptions(fallback,3-options.length)];
 }
@@ -96,9 +105,9 @@ const reachabilityCache=new Map();
 const tezaursDialectWords=window.TEZAURS_DIALECTS||new Set(window.TEZAURS_INDEX?.apvidvardi||[]);
 const tezaursHistoricWords=window.TEZAURS_HISTORIC||new Set();
 const tezaursPos=window.TEZAURS_POS||{};
-let selected=[],found=[],message="Izvēlies klucīšus un atrodi pirmo vārdu.",hasError=false,isChecking=false,totalScore=0;
+let selected=[],found=[],gameLog=[],message="Izvēlies klucīšus un atrodi pirmo vārdu.",hasError=false,isChecking=false,totalScore=0;
 
-let unlockedBlocks=new Set(baseBlockIds),reservedMissionRewards=new Set(),unlockRound=0,pendingUnlock=false,pendingOptions=[],selectedLarge="";
+let unlockedBlocks=new Set(baseBlockIds),reservedMissionRewards=new Set(),unlockRound=0,pendingUnlock=false,pendingOptions=[],selectedLarge="",preparedExpansionKey="",preparedExpansionOptions=null,expansionPreparationHandle=0;
 const $=selector=>document.querySelector(selector);
 const assembly=$("#assembly"),blocksElement=$("#blocks"),feedback=$("#feedback"),wordPreview=$("#wordPreview"),discoveries=$("#discoveries");
 const unlockNote=$("#unlockNote"),progressBar=$("#progressBar"),progressText=$("#progressText"),nextStep=$("#nextStep"),score=$("#score"),checkButton=$("#checkButton");
@@ -137,7 +146,7 @@ let missions=createMissionSet();
 
 function awardMissionBlock(reserved){
   const id=reserved||pickMissionRewardBlock();if(!id)return"";
-  unlockedBlocks.add(id);if(!blocks.some(block=>block.id===id))blocks.push({id,text:id});reachabilityCache.clear();return id;
+  unlockedBlocks.add(id);if(!blocks.some(block=>block.id===id))blocks.push({id,text:id});gameLog.push({kind:"block",label:id,source:"MISIJAS BALVA"});reachabilityCache.clear();return id;
 }
 function updateMissions(word){
   const completed=[];missions.forEach(mission=>{if(mission.done||!mission.match(word))return;mission.progress++;if(mission.progress<mission.target)return;mission.done=true;mission.rewardBlock=awardMissionBlock(mission.rewardBlock);totalScore+=mission.reward;missionCompletedTotal++;completed.push(`${mission.title}: +${mission.reward}${mission.rewardBlock?` un ${mission.rewardBlock.toUpperCase()} klucītis`:""}`)});
@@ -152,17 +161,24 @@ function currentWord(){return selected.map(id=>blocks.find(block=>block.id===id)
 function addBlock(id){if(isChecking)return;selected.push(id);message="Kad vārds gatavs, pārbaudi to.";hasError=false;renderUI()}
 function removeBlock(index){if(isChecking)return;selected.splice(index,1);message=selected.length?"Kad vārds gatavs, pārbaudi to.":"Izvēlies klucīšus un saliec vārdu.";hasError=false;renderUI()}
 
+function expansionPreparationKey(){return`${unlockRound}:${[...unlockedBlocks].sort().join("|")}:${[...reservedMissionRewards].sort().join("|")}`}
+function prepareExpansionOptions(round){
+  const key=expansionPreparationKey();if(preparedExpansionKey===key||expansionPreparationHandle)return;
+  const prepare=()=>{expansionPreparationHandle=0;if(pendingUnlock||expansionPreparationKey()!==key)return;preparedExpansionOptions=typeof round.options==="function"?round.options():round.options;preparedExpansionKey=key};
+  expansionPreparationHandle="requestIdleCallback" in window?requestIdleCallback(prepare,{timeout:1200}):setTimeout(prepare,0);
+}
 function checkProgression(){
-  const round=currentUnlockRound();if(pendingUnlock||found.length<round.threshold)return;
-  pendingOptions=typeof round.options==="function"?round.options():round.options;
+  const round=currentUnlockRound();if(pendingUnlock)return;if(found.length<round.threshold){if(round.threshold-found.length<=1)prepareExpansionOptions(round);return}
+  const key=expansionPreparationKey();pendingOptions=preparedExpansionKey===key&&preparedExpansionOptions?preparedExpansionOptions:(typeof round.options==="function"?round.options():round.options);preparedExpansionKey="";preparedExpansionOptions=null;
   pendingUnlock=true;levelModal.hidden=false;levelKicker.textContent=round.kicker;levelTitle.textContent=round.title;levelDescription.textContent=round.description;
   unlockChoices.innerHTML=pendingOptions.map((option,index)=>`<button type="button" data-unlock-option="${index}"><b>${option.blocks.map(block=>`<span class="${[...block].length===1?"single-letter":""}">${block.toUpperCase()}</span>`).join("<i>+</i>")}</b><small>Piemēri: ${option.example}</small></button>`).join("");
 }
 
 function chooseUnlock(optionIndex){
   const option=pendingOptions[optionIndex];if(!pendingUnlock||!option)return;
-  option.blocks.forEach(id=>unlockedBlocks.add(id));if(unlockRound===0)selectedLarge=option.blocks[0];unlockRound++;pendingUnlock=false;pendingOptions=[];levelModal.hidden=true;
+  option.blocks.forEach(id=>unlockedBlocks.add(id));if(unlockRound===0)selectedLarge=option.blocks[0];unlockRound++;pendingUnlock=false;pendingOptions=[];preparedExpansionKey="";preparedExpansionOptions=null;levelModal.hidden=true;
   option.blocks.forEach(id=>{if(!blocks.some(block=>block.id===id))blocks.push({id,text:id})});
+  option.blocks.forEach(id=>gameLog.push({kind:"block",label:id,source:`PAPLAŠINĀJUMS ${unlockRound}`}));
   message=`Atbloķēti: ${option.blocks.map(id=>id.toUpperCase()).join(" + ")}.`;
   checkProgression();renderUI();
 }
@@ -182,11 +198,19 @@ async function checkWord(){
   if(!words[current])words[current]={meaning:"Tēzaura datu kopas šķirklis",parts:[...selected]};
   const partCount=selected.length,baseScores=[0,40,100,220,400,650],baseScore=partCount<baseScores.length?baseScores[partCount]:650+(partCount-5)*300,isDialect=tezaursDialectWords.has(current),isHistoric=tezaursHistoricWords.has(current),earned=baseScore+(isDialect?120:0)+(isHistoric?150:0);
   words[current].points=earned;words[current].apvidvards=isDialect;words[current].senvards=isHistoric;totalScore+=earned;
-  found.push(current);selected=[];message=`Atrasts: ${current} — +${earned} punkti${isDialect?" · apvidvārds +120":""}${isHistoric?" · senvārds +150":""}.`;hasError=false;updateMissions(current);
+  found.push(current);gameLog.push({kind:"word",label:current});selected=[];message=`Atrasts: ${current} — +${earned} punkti${isDialect?" · apvidvārds +120":""}${isHistoric?" · senvārds +150":""}.`;hasError=false;updateMissions(current);
   graph.add(current);checkProgression();renderUI();showDefinition(current,"Ielādē Tēzaura definīciju…");enrichDefinition(current);
 }
 
-function resetGame(){const previous=activeFamily.id;activeFamily=randomStarter(previous);baseBlockIds=activeFamily.base;selected=[];found=[];totalScore=0;message=`Jauna sākuma saime: ${activeFamily.root.toUpperCase()}.`;hasError=false;isChecking=false;unlockedBlocks=new Set(baseBlockIds);unlockRound=0;pendingUnlock=false;pendingOptions=[];selectedLarge="";missionRefreshTimers.forEach(clearTimeout);missionRefreshTimers=[];missionCompletedTotal=0;missions=createMissionSet();reachabilityCache.clear();clearTimeout(definitionTimer);definitionToast.classList.remove("show");definitionToast.hidden=true;levelModal.hidden=true;graph.clear();renderUI()}
+function resetGame(){const previous=activeFamily.id;activeFamily=randomStarter(previous);baseBlockIds=activeFamily.base;selected=[];found=[];gameLog=[];totalScore=0;message=`Jauna sākuma saime: ${activeFamily.root.toUpperCase()}.`;hasError=false;isChecking=false;unlockedBlocks=new Set(baseBlockIds);unlockRound=0;pendingUnlock=false;pendingOptions=[];preparedExpansionKey="";preparedExpansionOptions=null;if(expansionPreparationHandle){if("cancelIdleCallback" in window)cancelIdleCallback(expansionPreparationHandle);else clearTimeout(expansionPreparationHandle);expansionPreparationHandle=0}selectedLarge="";missionRefreshTimers.forEach(clearTimeout);missionRefreshTimers=[];missionCompletedTotal=0;missions=createMissionSet();reachabilityCache.clear();clearTimeout(definitionTimer);definitionToast.classList.remove("show");definitionToast.hidden=true;levelModal.hidden=true;graph.clear();renderUI()}
+
+function gameLogMarkup(){
+  if(!gameLog.length)return'<div class="empty-state"><b>∴</b><span>VĒL NAV NOTIKUMU</span><small>Vārdi un iegūtie klucīši parādīsies šeit.</small></div>';
+  return[...gameLog].reverse().map((entry,index)=>{
+    if(entry.kind==="block")return`<div class="discovery log-block"><span>◆</span><div><b>${entry.label}</b><small>JAUNS KLUCĪTIS · ${entry.source}</small></div><em>+</em></div>`;
+    const word=entry.label,data=words[word];return`<div class="discovery${data.apvidvards?" dialect":""}${data.senvards?" historic":""}"><span>${String(gameLog.length-index).padStart(2,"0")}</span><div><b>${word}</b><small>${data.meaning}${data.apvidvards?" · APVIDVĀRDS":""}${data.senvards?" · SENVĀRDS":""} · +${data.points||0}</small></div><em>✓</em></div>`;
+  }).join("");
+}
 
 function renderUI(){
   const current=currentWord();assembly.classList.toggle("is-wrong",hasError);
@@ -199,7 +223,7 @@ function renderUI(){
   mapAssembly.innerHTML=selected.length?selected.map((id,index)=>`<button data-map-remove="${index}">${id}</button>`).join(""):'<span>Izvēlies klucīšus zemāk</span>';
   mapBlocks.innerHTML=blocks.filter(block=>unlockedBlocks.has(block.id)).map(block=>`<button style="--letters:${[...block.text].length}" class="${selected.includes(block.id)?"active ":""}${[...block.text].length===1?"single-letter":""}" data-map-block="${block.id}">${block.text}</button>`).join("");
   unlockNote.hidden=!pendingUnlock;unlockNote.textContent=pendingUnlock?"✦ Sasniegts līmeņa slieksnis — izvēlies jaunu klucīti!":"";
-  discoveries.innerHTML=found.length?found.map((word,index)=>`<div class="discovery${words[word].apvidvards?" dialect":""}${words[word].senvards?" historic":""}"><span>${String(index+1).padStart(2,"0")}</span><div><b>${word}</b><small>${words[word].meaning}${words[word].apvidvards?" · APVIDVĀRDS":""}${words[word].senvards?" · SENVĀRDS":""} · +${words[word].points||0}</small></div><em>✓</em></div>`).join(""):'<div class="empty-state"><b>∴</b><span>VĒL NAV ATKLĀJUMU</span><small>Pirmais vārds parādīsies šeit.</small></div>';
+  discoveries.innerHTML=gameLogMarkup();
   const growth=Math.min(found.length*8,100);progressBar.style.width=`${growth}%`;progressText.textContent=`${found.length} MEZGLI`;score.textContent=`${totalScore} PUNKTI`;
   const nextRound=currentUnlockRound();nextStep.textContent=pendingUnlock?"IZVĒLIES VIENU NO 3 IESPĒJĀM":`${Math.min(found.length,nextRound.threshold)}/${nextRound.threshold} LĪDZ PAPLAŠINĀJUMAM`;
   mapDiscoveries.innerHTML=discoveries.innerHTML;mapScore.textContent=`${totalScore} PUNKTI`;mapNextStep.textContent=nextStep.textContent;
@@ -214,10 +238,33 @@ function isDirectBuild(a,b){
   return isPrefix||isSuffix;
 }
 function bestParent(word){const candidates=found.filter(item=>item!==word);let best=null,bestScore=-Infinity;candidates.forEach(candidate=>{const value=(isDirectBuild(word,candidate)?100:0)+sharedParts(word,candidate)*10-Math.abs(words[word].parts.length-words[candidate].parts.length);if(value>bestScore){bestScore=value;best=candidate}});return best}
+const morphology=window.DLMDM_MORPHOLOGY||{};
+const reduceGraphMotion=matchMedia("(prefers-reduced-motion: reduce)");
+const morphologyRelationCache=new Map();
+document.documentElement.dataset.morphologyLemmas=String(Object.keys(morphology).length);
+function intersects(left=[],right=[]){const values=new Set(left);return right.some(value=>values.has(value))}
+function morphologicalRelation(a,b){
+  const cacheKey=`${a}\u0000${b}`;if(morphologyRelationCache.has(cacheKey))return morphologyRelationCache.get(cacheKey);
+  const left=morphology[a],right=morphology[b];let relation=null;if(!left||!right){morphologyRelationCache.set(cacheKey,null);return null}
+  if(left.parents.includes(b)){
+    const compound=left.parentGroups.some(group=>group.type==="COMP"&&group.parents.includes(b));
+    relation={from:b,to:a,kind:compound?"compound":"parent",score:compound?95:100};
+  }else if(right.parents.includes(a)){
+    const compound=right.parentGroups.some(group=>group.type==="COMP"&&group.parents.includes(a));
+    relation={from:a,to:b,kind:compound?"compound":"parent",score:compound?95:100};
+  }else if(intersects(left.subgroups,right.subgroups))relation={from:a,to:b,kind:"subgroup",score:70};
+  else if(intersects(left.roots,right.roots))relation={from:a,to:b,kind:"root",score:65};
+  else if(intersects(left.families,right.families))relation={from:a,to:b,kind:"family",score:35};
+  morphologyRelationCache.set(cacheKey,relation);return relation;
+}
+function bestMorphologicalNeighbor(word,names){
+  return names.filter(name=>name!==word).map(name=>({name,relation:morphologicalRelation(word,name)})).filter(item=>item.relation).sort((a,b)=>b.relation.score-a.relation.score)[0]?.name||null;
+}
+window.getMorphologicalRelation=morphologicalRelation;
 function segmentsCross(a,b,c,d){const turn=(p,q,r)=>(q.x-p.x)*(r.y-p.y)-(q.y-p.y)*(r.x-p.x);return turn(a,b,c)*turn(a,b,d)<0&&turn(c,d,a)*turn(c,d,b)<0}
 
 const graph={
-  nodes:new Map(),links:[],drag:null,pan:null,width:900,height:620,dpr:1,temperature:0,lastOptimize:0,swapTargets:new Map(),layoutTargets:new Map(),camera:{x:0,y:0,scale:1},
+  nodes:new Map(),links:[],drag:null,pan:null,width:900,height:620,dpr:1,temperature:0,lastOptimize:0,lastFrame:0,swapTargets:new Map(),layoutTargets:new Map(),camera:{x:0,y:0,scale:1},
   metrics(){const density=Math.max(0,this.nodes.size-4);return{w:Math.max(50,108-density*3.15),h:Math.max(28,46-density*1.15),font:Math.max(8,13.5-density*.25),subfont:Math.max(5.5,7.2-density*.09)}},
   resize(){const rect=canvas.getBoundingClientRect();this.dpr=Math.min(devicePixelRatio||1,2);this.width=Math.max(rect.width,320);this.height=Math.max(rect.height,420);canvas.width=Math.round(this.width*this.dpr);canvas.height=Math.round(this.height*this.dpr);ctx.setTransform(this.dpr,0,0,this.dpr,0,0);if(this.nodes.size)this.computeLayoutTargets()},
   setZoom(scale,screenX=this.width/2,screenY=this.height/2){const next=Math.max(.22,Math.min(2.5,scale)),worldX=(screenX-this.camera.x)/this.camera.scale,worldY=(screenY-this.camera.y)/this.camera.scale;this.camera.x=screenX-worldX*next;this.camera.y=screenY-worldY*next;this.camera.scale=next},
@@ -285,42 +332,56 @@ const graph={
     this.nodes.forEach(node=>{const pulse=Math.max(0,1-(now-node.birth)/700),w=m.w*(1+pulse*.12),h=m.h*(1+pulse*.12),x=node.x-w/2,y=node.y-h/2;ctx.fillStyle="#0c141c";ctx.strokeStyle="#8be6ff";ctx.lineWidth=2/zoom;ctx.beginPath();ctx.roundRect(x,y,w,h,Math.min(14,h/3));ctx.fill();ctx.stroke();ctx.fillStyle="#eff9ff";ctx.textAlign="center";ctx.textBaseline="middle";ctx.font=`700 ${m.font}px Arial`;ctx.fillText(node.word.toUpperCase(),node.x,node.y-h*.1);ctx.fillStyle="#62cfff";ctx.font=`${m.subfont}px Arial`;ctx.fillText(words[node.word].parts.join(" + ").toUpperCase(),node.x,node.y+h*.22)});
     const crossings=this.crossingCount();networkCount.textContent=`${this.nodes.size} ${this.nodes.size===1?"MEZGLS":"MEZGLI"} · ${crossings?`${crossings} KRUSTOJUMI`:this.temperature>.04?"KĀRTOJAS":"STABILS"}`;
   },
-  frame(now){this.step(now);this.draw(now);requestAnimationFrame(time=>this.frame(time))}
+  frame(now){const count=this.nodes.size,interval=count>100?50:count>60?40:count>30?28:16;if(!this.lastFrame||now-this.lastFrame>=interval){this.lastFrame=now;this.step(now);this.draw(now)}requestAnimationFrame(time=>this.frame(time))}
 };
 
 function containsOrderedParts(a,b){const small=words[a].parts,big=words[b].parts;if(small.length>big.length)return false;for(let offset=0;offset<=big.length-small.length;offset++)if(small.every((part,index)=>part===big[offset+index]))return true;return false}
 function isHighlightedNode(word){
   const selected=graph.selected;if(!selected)return true;if(word===selected)return true;
+  if(word.includes(selected))return true;
   const selectedParts=words[selected]?.parts||[];if(selectedParts.length===1)return Boolean(words[word]?.parts.includes(selectedParts[0]));
   return graph.links.some(link=>(link.from===selected&&link.to===word)||(link.to===selected&&link.from===word));
 }
 function isHighlightedLink(link){if(!graph.selected)return true;const selectedParts=words[graph.selected]?.parts||[];return selectedParts.length===1?isHighlightedNode(link.from)&&isHighlightedNode(link.to):link.from===graph.selected||link.to===graph.selected}
 Object.assign(graph,{
-  selected:null,
+  selected:null,lastOrbitTime:0,
   metrics(){const density=Math.max(0,this.nodes.size-6);return{w:Math.max(64,104-density*1.8),h:Math.max(34,46-density*.55),font:Math.max(9,13-density*.12),subfont:Math.max(6,7-density*.04)}},
   arrangeTargets(){[...this.nodes.values()].forEach((node,index)=>{const angle=index*2.399963,radius=Math.sqrt(index)*92;node.targetX=this.width/2+Math.cos(angle)*radius;node.targetY=this.height/2+Math.sin(angle)*radius})},
   computeLayoutTargets(){this.arrangeTargets()},
-  add(word){if(words[word].parts.length<2&&[...word].length<3)return;const angle=this.nodes.size*2.399963,x=(this.width/2-this.camera.x)/this.camera.scale,y=(this.height/2-this.camera.y)/this.camera.scale;this.nodes.set(word,{word,x,y,vx:Math.cos(angle)*4,vy:Math.sin(angle)*4,targetX:x,targetY:y,birth:performance.now()});this.rebuildLinks();this.arrangeTargets();[...this.nodes.values()].forEach((node,index)=>{node.vx+=Math.cos(index*1.8)*1.8;node.vy+=Math.sin(index*2.1)*1.8})},
+  add(word){if(words[word].parts.length<2&&[...word].length<3)return;const index=this.nodes.size,angle=index*2.399963,neighborName=bestMorphologicalNeighbor(word,[...this.nodes.keys()]),neighbor=this.nodes.get(neighborName),centerX=(this.width/2-this.camera.x)/this.camera.scale,centerY=(this.height/2-this.camera.y)/this.camera.scale,x=neighbor?neighbor.x+Math.cos(angle)*170:centerX,y=neighbor?neighbor.y+Math.sin(angle)*170:centerY;this.nodes.set(word,{word,x,y,vx:Math.cos(angle)*4,vy:Math.sin(angle)*4,targetX:x,targetY:y,rotation:0,spinSpeed:(index%2?1:-1)*(.00014+(index%5)*.000012),birth:performance.now()});this.rebuildLinks();this.arrangeTargets();[...this.nodes.values()].forEach((node,nodeIndex)=>{node.vx+=Math.cos(nodeIndex*1.8)*1.8;node.vy+=Math.sin(nodeIndex*2.1)*1.8})},
   rebuildLinks(){
-    const names=[...this.nodes.keys()],degree=new Map(names.map(name=>[name,0]));this.links=[];
-    const connect=(from,to,fallback=false)=>{this.links.push({from,to,fallback});degree.set(from,degree.get(from)+1);degree.set(to,degree.get(to)+1)};
-    for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++)if(isDirectBuild(names[i],names[j]))connect(names[i],names[j]);
+    const names=[...this.nodes.keys()],degree=new Map(names.map(name=>[name,0])),candidates=[];this.links=[];
+    const connected=new Set(),connect=(from,to,kind="fallback",score=0)=>{const key=[from,to].sort().join("\u0000");if(connected.has(key))return;connected.add(key);this.links.push({from,to,kind,score,fallback:kind==="fallback"});degree.set(from,degree.get(from)+1);degree.set(to,degree.get(to)+1)};
+    for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
+      const relation=morphologicalRelation(names[i],names[j]);
+      if(relation)candidates.push(relation);else if(isDirectBuild(names[i],names[j]))candidates.push({from:names[i],to:names[j],kind:"block",score:20});
+    }
+    candidates.filter(candidate=>candidate.score>=90).sort((a,b)=>b.score-a.score).forEach(candidate=>connect(candidate.from,candidate.to,candidate.kind,candidate.score));
     for(const name of names){
-      if(degree.get(name)>0)continue;let best="",bestScore=0;
-      for(const other of names){if(other===name||degree.get(other)>=3)continue;const common=sharedParts(name,other);if(!common)continue;const score=common*100-Math.abs(words[name].parts.length-words[other].parts.length)*8;if(score>bestScore){bestScore=score;best=other}}
-      if(best)connect(name,best,true);
+      if(degree.get(name)>0)continue;
+      const best=candidates.filter(candidate=>(candidate.from===name||candidate.to===name)&&degree.get(candidate.from===name?candidate.to:candidate.from)<8).sort((a,b)=>b.score-a.score)[0];
+      if(best){connect(best.from,best.to,best.kind,best.score);continue}
+      let fallback="",fallbackScore=0;
+      for(const other of names){if(other===name||degree.get(other)>=3)continue;const common=sharedParts(name,other);if(!common)continue;const score=common*100-Math.abs(words[name].parts.length-words[other].parts.length)*8;if(score>fallbackScore){fallbackScore=score;fallback=other}}
+      if(fallback)connect(name,fallback,"fallback",fallbackScore);
     }
   },
   crossingCount(){return 0},obstructionCount(){return 0},optimizeCrossings(){},
-  clear(){this.nodes.clear();this.links=[];this.drag=null;this.pan=null;this.selected=null;this.camera={x:0,y:0,scale:1}},
-  step(){const list=[...this.nodes.values()];for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){const a=list[i],b=list[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.max(Math.hypot(dx,dy),12),ux=dx/d,uy=dy/d,repel=Math.min(8,18000/(d*d)),collision=d<150?(150-d)*.035:0,force=repel+collision;a.vx-=ux*force;a.vy-=uy*force;b.vx+=ux*force;b.vy+=uy*force}this.links.forEach(link=>{const a=this.nodes.get(link.from),b=this.nodes.get(link.to);if(!a||!b)return;const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(Math.hypot(dx,dy),1),force=(d-190)*.0035;a.vx+=dx/d*force;a.vy+=dy/d*force;b.vx-=dx/d*force;b.vy-=dy/d*force});list.forEach(node=>{if(this.drag===node.word)return;node.vx=(node.vx+(node.targetX-node.x)*.001)*.92;node.vy=(node.vy+(node.targetY-node.y)*.001)*.92;const speed=Math.hypot(node.vx,node.vy);if(speed>5){node.vx=node.vx/speed*5;node.vy=node.vy/speed*5}node.x+=node.vx;node.y+=node.vy})},
-  draw(now){const m=this.metrics(),zoom=this.camera.scale;ctx.setTransform(this.dpr,0,0,this.dpr,0,0);ctx.clearRect(0,0,this.width,this.height);ctx.fillStyle="#080d12";ctx.fillRect(0,0,this.width,this.height);let grid=28*zoom;while(grid<14)grid*=2;const ox=((this.camera.x%grid)+grid)%grid,oy=((this.camera.y%grid)+grid)%grid;ctx.fillStyle="#20303a";for(let x=ox;x<this.width;x+=grid)for(let y=oy;y<this.height;y+=grid)ctx.fillRect(x,y,1,1);if(!this.nodes.size){ctx.fillStyle="#40515b";ctx.textAlign="center";ctx.font="10px Arial";ctx.fillText("TĪKLS SĀKS AUGT PĒC PIRMĀ ATKLĀJUMA",this.width/2,this.height/2);networkCount.textContent="0 MEZGLI";return}ctx.setTransform(this.dpr*zoom,0,0,this.dpr*zoom,this.dpr*this.camera.x,this.dpr*this.camera.y);this.links.forEach(link=>{const a=this.nodes.get(link.from),b=this.nodes.get(link.to);if(!a||!b)return;const active=isHighlightedLink(link);ctx.globalAlpha=active?1:.08;ctx.strokeStyle=active?"#315b6d":"#193746";ctx.lineWidth=1.25/zoom;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.globalAlpha=1});this.nodes.forEach(node=>{const active=isHighlightedNode(node.word),pulse=Math.max(0,1-(now-node.birth)/700),w=m.w*(1+pulse*.1),h=m.h*(1+pulse*.1),isDialect=Boolean(words[node.word].apvidvards),isHistoric=Boolean(words[node.word].senvards),accent=isHistoric?"#e0b152":isDialect?"#63e69a":"#8be6ff",fill=isHistoric?"#1b160c":isDialect?"#0b1913":"#0c141c",title=isHistoric?"#ffe0a0":isDialect?"#b9ffd3":"#eff9ff",subtitle=isHistoric?"#e0b152":isDialect?"#63e69a":"#62cfff";ctx.globalAlpha=active?1:.14;ctx.fillStyle=fill;ctx.strokeStyle=accent;ctx.lineWidth=(node.word===this.selected?2.7:1.8)/zoom;ctx.beginPath();ctx.roundRect(node.x-w/2,node.y-h/2,w,h,Math.min(12,h/3));ctx.fill();ctx.stroke();ctx.fillStyle=title;ctx.textAlign="center";ctx.textBaseline="middle";ctx.font=`700 ${m.font}px Arial`;ctx.fillText(node.word.toUpperCase(),node.x,node.y-h*.1);ctx.fillStyle=subtitle;ctx.font=`${m.subfont}px Arial`;ctx.fillText(words[node.word].parts.join(" + ").toUpperCase(),node.x,node.y+h*.22);ctx.globalAlpha=1});networkCount.textContent=`${this.nodes.size} MEZGLI · FLOATING`}
+  rotateConstellation(list,now){
+    if(!this.lastOrbitTime){this.lastOrbitTime=now;return}const elapsed=Math.min(50,Math.max(0,now-this.lastOrbitTime));this.lastOrbitTime=now;
+    if(list.length<2||this.drag||this.pan||this.selected||reduceGraphMotion.matches)return;
+    const angle=elapsed*.00005,cos=Math.cos(angle),sin=Math.sin(angle),centerX=list.reduce((sum,node)=>sum+node.x,0)/list.length,centerY=list.reduce((sum,node)=>sum+node.y,0)/list.length,targetCenterX=list.reduce((sum,node)=>sum+node.targetX,0)/list.length,targetCenterY=list.reduce((sum,node)=>sum+node.targetY,0)/list.length;
+    list.forEach((node,index)=>{const x=node.x-centerX,y=node.y-centerY,targetX=node.targetX-targetCenterX,targetY=node.targetY-targetCenterY,vx=node.vx,vy=node.vy;node.x=centerX+x*cos-y*sin;node.y=centerY+x*sin+y*cos;node.targetX=targetCenterX+targetX*cos-targetY*sin;node.targetY=targetCenterY+targetX*sin+targetY*cos;node.vx=vx*cos-vy*sin;node.vy=vx*sin+vy*cos;if(!Number.isFinite(node.spinSpeed))node.spinSpeed=(index%2?1:-1)*.00016;node.rotation=(node.rotation||0)+elapsed*node.spinSpeed});
+  },
+  clear(){this.nodes.clear();this.links=[];this.drag=null;this.pan=null;this.selected=null;this.lastOrbitTime=0;this.lastFrame=0;this.camera={x:0,y:0,scale:1}},
+  step(now){const list=[...this.nodes.values()];this.rotateConstellation(list,now);for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){const a=list[i],b=list[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.max(Math.hypot(dx,dy),12),ux=dx/d,uy=dy/d,repel=Math.min(8,18000/(d*d)),collision=d<150?(150-d)*.035:0,force=repel+collision;a.vx-=ux*force;a.vy-=uy*force;b.vx+=ux*force;b.vy+=uy*force}this.links.forEach(link=>{const a=this.nodes.get(link.from),b=this.nodes.get(link.to);if(!a||!b)return;const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(Math.hypot(dx,dy),1),force=(d-190)*.0035;a.vx+=dx/d*force;a.vy+=dy/d*force;b.vx-=dx/d*force;b.vy-=dy/d*force});list.forEach(node=>{if(this.drag===node.word)return;node.vx=(node.vx+(node.targetX-node.x)*.001)*.92;node.vy=(node.vy+(node.targetY-node.y)*.001)*.92;const speed=Math.hypot(node.vx,node.vy);if(speed>5){node.vx=node.vx/speed*5;node.vy=node.vy/speed*5}node.x+=node.vx;node.y+=node.vy})},
+  draw(now){const m=this.metrics(),zoom=this.camera.scale;ctx.setTransform(this.dpr,0,0,this.dpr,0,0);ctx.clearRect(0,0,this.width,this.height);ctx.fillStyle="#080d12";ctx.fillRect(0,0,this.width,this.height);let grid=28*zoom;while(grid<14)grid*=2;const ox=((this.camera.x%grid)+grid)%grid,oy=((this.camera.y%grid)+grid)%grid;ctx.fillStyle="#20303a";for(let x=ox;x<this.width;x+=grid)for(let y=oy;y<this.height;y+=grid)ctx.fillRect(x,y,1,1);if(!this.nodes.size){ctx.fillStyle="#40515b";ctx.textAlign="center";ctx.font="10px Arial";ctx.fillText("TĪKLS SĀKS AUGT PĒC PIRMĀ ATKLĀJUMA",this.width/2,this.height/2);networkCount.textContent="0 MEZGLI";return}ctx.setTransform(this.dpr*zoom,0,0,this.dpr*zoom,this.dpr*this.camera.x,this.dpr*this.camera.y);this.links.forEach(link=>{const a=this.nodes.get(link.from),b=this.nodes.get(link.to);if(!a||!b)return;const active=isHighlightedLink(link);ctx.globalAlpha=active?1:.08;ctx.strokeStyle=active?"#315b6d":"#193746";ctx.lineWidth=1.25/zoom;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.globalAlpha=1});this.nodes.forEach(node=>{const active=isHighlightedNode(node.word),pulse=Math.max(0,1-(now-node.birth)/700),w=m.w*(1+pulse*.1),h=m.h*(1+pulse*.1),isDialect=Boolean(words[node.word].apvidvards),isHistoric=Boolean(words[node.word].senvards),accent=isHistoric?"#e0b152":isDialect?"#63e69a":"#8be6ff",fill=isHistoric?"#1b160c":isDialect?"#0b1913":"#0c141c",title=isHistoric?"#ffe0a0":isDialect?"#b9ffd3":"#eff9ff",subtitle=isHistoric?"#e0b152":isDialect?"#63e69a":"#62cfff";ctx.save();ctx.translate(node.x,node.y);ctx.rotate(node.rotation||0);ctx.globalAlpha=active?1:.14;ctx.fillStyle=fill;ctx.strokeStyle=accent;ctx.lineWidth=(node.word===this.selected?2.7:1.8)/zoom;ctx.beginPath();ctx.roundRect(-w/2,-h/2,w,h,Math.min(12,h/3));ctx.fill();ctx.stroke();ctx.fillStyle=title;ctx.textAlign="center";ctx.textBaseline="middle";ctx.font=`700 ${m.font}px Arial`;ctx.fillText(node.word.toUpperCase(),0,-h*.1);ctx.fillStyle=subtitle;ctx.font=`${m.subfont}px Arial`;ctx.fillText(words[node.word].parts.join(" + ").toUpperCase(),0,h*.22);ctx.restore();ctx.globalAlpha=1});networkCount.textContent=`${this.nodes.size} MEZGLI · FLOATING`}
 });
 
 function screenPosition(event){const rect=canvas.getBoundingClientRect();return{x:event.clientX-rect.left,y:event.clientY-rect.top}}
 function pointerPosition(event){const p=screenPosition(event);return{x:(p.x-graph.camera.x)/graph.camera.scale,y:(p.y-graph.camera.y)/graph.camera.scale}}
 function showNodeDefinition(word){if(!words[word])return;showDefinition(word,words[word].meaning||"Ielādē Tēzaura definīciju…");enrichDefinition(word)}
-canvas.addEventListener("pointerdown",event=>{const p=pointerPosition(event),screen=screenPosition(event),m=graph.metrics(),hit=[...graph.nodes.values()].reverse().find(n=>Math.abs(p.x-n.x)<=m.w/2&&Math.abs(p.y-n.y)<=m.h/2);if(hit){graph.drag=hit.word;graph.selected=hit.word;showNodeDefinition(hit.word)}else{graph.selected=null;graph.pan={x:screen.x,y:screen.y}}canvas.classList.add("dragging");canvas.setPointerCapture(event.pointerId)});
+canvas.addEventListener("pointerdown",event=>{const p=pointerPosition(event),screen=screenPosition(event),m=graph.metrics(),hit=[...graph.nodes.values()].reverse().find(n=>{const dx=p.x-n.x,dy=p.y-n.y,angle=-(n.rotation||0),localX=dx*Math.cos(angle)-dy*Math.sin(angle),localY=dx*Math.sin(angle)+dy*Math.cos(angle);return Math.abs(localX)<=m.w/2&&Math.abs(localY)<=m.h/2});if(hit){graph.drag=hit.word;graph.selected=hit.word;showNodeDefinition(hit.word)}else{graph.selected=null;graph.pan={x:screen.x,y:screen.y}}canvas.classList.add("dragging");canvas.setPointerCapture(event.pointerId)});
 canvas.addEventListener("pointermove",event=>{if(graph.pan){const p=screenPosition(event);graph.camera.x+=p.x-graph.pan.x;graph.camera.y+=p.y-graph.pan.y;graph.pan=p;return}if(!graph.drag)return;const p=pointerPosition(event),node=graph.nodes.get(graph.drag),before=graph.crossingCount(),oldX=node.x,oldY=node.y;node.x=p.x;node.y=p.y;if(graph.crossingCount()>before){node.x=oldX;node.y=oldY}node.vx=node.vy=0});
 function releasePointer(event){if(!graph.drag&&!graph.pan)return;const movedNode=Boolean(graph.drag);graph.drag=null;graph.pan=null;if(movedNode){graph.computeLayoutTargets();graph.temperature=Math.max(graph.temperature,.65);[...graph.nodes.values()].forEach((node,index)=>{node.vx+=Math.cos(index*1.8)*2;node.vy+=Math.sin(index*2.1)*2})}canvas.classList.remove("dragging");if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId)}
 canvas.addEventListener("pointerup",releasePointer);canvas.addEventListener("pointercancel",releasePointer);

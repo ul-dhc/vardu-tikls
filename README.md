@@ -24,6 +24,7 @@ Visas pārlūka resursu adreses ir relatīvas, tādēļ spēle darbojas gan dom�
 
 - `index.html`, `styles.css`, `tree.css`, `script.js` — spēles saskarne un loģika;
 - `tezaurs-words.js`, `tezaurs-index.js`, `tezaurs-dialects.js` — lokālie vārdu indeksi;
+- `dlmdm-morphology.js` — DLMDM vārddarināšanas, sakņu un vārdu saimju indekss tīkla savienojumiem;
 - `definitions/` — definīciju fragmenti, kas tiek ielādēti pēc vajadzības;
 - `assets/brand/` — ResearchGames.eu zīmola resursi;
 - `.nojekyll` — neļauj GitHub Pages izlaist statiskos resursus.
@@ -32,4 +33,6 @@ Python indeksu veidošanas skripti un pārējais izstrādes karkass nav vajadzī
 
 ## Datu un dizaina avoti
 
-Vārdu un definīciju pārbaude balstās lokāli sagatavotā Tēzaura datu indeksā. Dizaina valoda un zīmola grafika pielāgota no pievienotā `researchgames.eu` projekta. Pirms publiskas izplatīšanas pārliecinieties, ka repozitorijā ir norādītas jūsu datu kopai un zīmola resursiem atbilstošās licences.
+Vārdu un definīciju pārbaude balstās lokāli sagatavotā Tēzaura datu indeksā. Morfoloģiskie savienojumi izmanto **Database of Latvian Morphemes and Derivational Models (DLMDM)**: Kalnača, Andra, Pakalne, Tatjana (eds.). 2026. Rīga: University of Latvia. DLMDM dati licencēti ar [CC BY 4.0](https://github.com/MorphLatLang/DLMDM/blob/main/LICENSE.md).
+
+Dizaina valoda un zīmola grafika pielāgota no pievienotā `researchgames.eu` projekta. Pirms publiskas izplatīšanas pārliecinieties, ka repozitorijā ir norādītas pārējiem datu un zīmola resursiem atbilstošās licences.

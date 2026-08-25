@@ -26,6 +26,9 @@
 .discovery.historic { border-top-color:#66512a; background:linear-gradient(90deg,rgba(224,177,82,.09),transparent 72%); }
 .discovery.historic b,.discovery.historic em { color:#e0b152; }
 .discovery.historic small { color:#b69a62; }
+.discovery.log-block { border-top-color:#315567; background:linear-gradient(90deg,rgba(139,230,255,.07),transparent 72%); }
+.discovery.log-block>span,.discovery.log-block b,.discovery.log-block em { color:#8be6ff; }
+.discovery.log-block small { color:#789eae; }
 .check:disabled { cursor:wait; opacity:.72; }
 @media(max-width:800px){ .word-network{height:520px} }
 
