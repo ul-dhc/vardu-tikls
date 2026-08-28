@@ -105,7 +105,7 @@ const reachabilityCache=new Map();
 const tezaursDialectWords=window.TEZAURS_DIALECTS||new Set(window.TEZAURS_INDEX?.apvidvardi||[]);
 const tezaursHistoricWords=window.TEZAURS_HISTORIC||new Set();
 const tezaursPos=window.TEZAURS_POS||{};
-let selected=[],found=[],gameLog=[],message="Izvēlies klucīšus un atrodi pirmo vārdu.",hasError=false,isChecking=false,totalScore=0;
+let selected=[],found=[],gameLog=[],message="Izvēlies klucīšus un atrodi pirmo vārdu.",hasError=false,isChecking=false,totalScore=0,expeditionStartedAt=Date.now(),expeditionSummaryOpen=false;
 
 let unlockedBlocks=new Set(baseBlockIds),reservedMissionRewards=new Set(),unlockRound=0,pendingUnlock=false,pendingOptions=[],selectedLarge="",preparedExpansionKey="",preparedExpansionOptions=null,expansionPreparationHandle=0;
 const $=selector=>document.querySelector(selector);
@@ -118,6 +118,7 @@ const mapAssembly=$("#mapAssembly"),mapBlocks=$("#mapBlocks"),mapWordPreview=$("
 const mapDiscoveries=$("#mapDiscoveries"),mapScore=$("#mapScore"),mapNextStep=$("#mapNextStep");
 const missionList=$("#missionList"),missionCount=$("#missionCount");
 const definitionToast=$("#definitionToast"),definitionWord=$("#definitionWord"),definitionText=$("#definitionText");let definitionTimer=0;const definitionChunks=new Map();
+const expeditionModal=$("#expeditionModal"),expeditionStats=$("#expeditionStats"),expeditionHighlights=$("#expeditionHighlights"),expeditionScore=$("#expeditionScore");
 
 const posMissionKinds={
   noun:{singular:"lietvārdu",plural:"lietvārdus",min:2,max:3,reward:65},
@@ -202,7 +203,12 @@ async function checkWord(){
   graph.add(current);checkProgression();renderUI();showDefinition(current,"Ielādē Tēzaura definīciju…");enrichDefinition(current);
 }
 
-function resetGame(){const previous=activeFamily.id;activeFamily=randomStarter(previous);baseBlockIds=activeFamily.base;selected=[];found=[];gameLog=[];totalScore=0;message=`Jauna sākuma saime: ${activeFamily.root.toUpperCase()}.`;hasError=false;isChecking=false;unlockedBlocks=new Set(baseBlockIds);unlockRound=0;pendingUnlock=false;pendingOptions=[];preparedExpansionKey="";preparedExpansionOptions=null;if(expansionPreparationHandle){if("cancelIdleCallback" in window)cancelIdleCallback(expansionPreparationHandle);else clearTimeout(expansionPreparationHandle);expansionPreparationHandle=0}selectedLarge="";missionRefreshTimers.forEach(clearTimeout);missionRefreshTimers=[];missionCompletedTotal=0;missions=createMissionSet();reachabilityCache.clear();clearTimeout(definitionTimer);definitionToast.classList.remove("show");definitionToast.hidden=true;levelModal.hidden=true;graph.clear();renderUI()}
+function formatDuration(milliseconds){const totalMinutes=Math.floor(milliseconds/60000),hours=Math.floor(totalMinutes/60),minutes=totalMinutes%60;return hours?`${hours} h ${minutes} min`:`${Math.max(1,minutes)} min`}
+function largestConnectedConstellation(){const neighbors=new Map(found.map(word=>[word,[]]));graph.links.forEach(link=>{neighbors.get(link.from)?.push(link.to);neighbors.get(link.to)?.push(link.from)});let largest=0;const visited=new Set();for(const word of found){if(visited.has(word))continue;let size=0,stack=[word];visited.add(word);while(stack.length){const current=stack.pop();size++;for(const next of neighbors.get(current)||[])if(!visited.has(next)){visited.add(next);stack.push(next)}}largest=Math.max(largest,size)}return largest}
+function expeditionSummary(){const dialects=found.filter(word=>words[word]?.apvidvards).length,historic=found.filter(word=>words[word]?.senvards).length,complex=[...found].sort((a,b)=>(words[b]?.parts.length||0)-(words[a]?.parts.length||0)||[...b].length-[...a].length)[0],longest=[...found].sort((a,b)=>[...b].length-[...a].length)[0],highest=[...found].sort((a,b)=>(words[b]?.points||0)-(words[a]?.points||0))[0],usage=new Map();found.forEach(word=>(words[word]?.parts||[]).forEach(part=>usage.set(part,(usage.get(part)||0)+1)));const mostUsed=[...usage].sort((a,b)=>b[1]-a[1])[0],families=new Set(found.flatMap(word=>morphology[word]?.families||[])).size;return{stats:[[found.length,"ATKLĀTIE VĀRDI"],[unlockedBlocks.size,"KLUCĪŠI"],[unlockRound,"PAPLAŠINĀJUMI"],[missionCompletedTotal,"MISIJAS"],[dialects,"APVIDVĀRDI"],[historic,"SENVĀRDI"],[largestConnectedConstellation(),"LIELĀKAIS TĪKLS"],[families,"VĀRDU SAIMES"]],highlights:[["SAREŽĢĪTĀKAIS VĀRDS",complex?`${complex} · ${words[complex].parts.length} daļas`:"—"],["GARĀKAIS VĀRDS",longest?`${longest} · ${[...longest].length} burti`:"—"],["VĒRTĪGĀKAIS VĀRDS",highest?`${highest} · ${words[highest].points||0} punkti`:"—"],["BIEŽĀKAIS KLUCĪTIS",mostUsed?`${mostUsed[0]} · ${mostUsed[1]} reizes`:"—"],["EKSPEDĪCIJAS LAIKS",formatDuration(Date.now()-expeditionStartedAt)],["MORFOLOĢISKIE SAVIENOJUMI",String(graph.links.filter(link=>!link.fallback&&link.kind!=="block").length)]]}}
+function openExpeditionSummary(){const summary=expeditionSummary();expeditionSummaryOpen=true;graph.selected=null;expeditionScore.textContent=totalScore;expeditionStats.innerHTML=summary.stats.map(([value,label])=>`<div class="expedition-stat"><b>${value}</b><span>${label}</span></div>`).join("");expeditionHighlights.innerHTML=summary.highlights.map(([label,value])=>`<div class="expedition-highlight"><span>${label}</span><b>${value}</b></div>`).join("");expeditionModal.hidden=false}
+function closeExpeditionSummary(){expeditionSummaryOpen=false;expeditionModal.hidden=true;graph.lastOrbitTime=performance.now()}
+function resetGame(){closeExpeditionSummary();const previous=activeFamily.id;activeFamily=randomStarter(previous);baseBlockIds=activeFamily.base;selected=[];found=[];gameLog=[];totalScore=0;expeditionStartedAt=Date.now();message=`Jauna sākuma saime: ${activeFamily.root.toUpperCase()}.`;hasError=false;isChecking=false;unlockedBlocks=new Set(baseBlockIds);unlockRound=0;pendingUnlock=false;pendingOptions=[];preparedExpansionKey="";preparedExpansionOptions=null;if(expansionPreparationHandle){if("cancelIdleCallback" in window)cancelIdleCallback(expansionPreparationHandle);else clearTimeout(expansionPreparationHandle);expansionPreparationHandle=0}selectedLarge="";missionRefreshTimers.forEach(clearTimeout);missionRefreshTimers=[];missionCompletedTotal=0;missions=createMissionSet();reachabilityCache.clear();clearTimeout(definitionTimer);definitionToast.classList.remove("show");definitionToast.hidden=true;levelModal.hidden=true;graph.clear();renderUI()}
 
 function gameLogMarkup(){
   if(!gameLog.length)return'<div class="empty-state"><b>∴</b><span>VĒL NAV NOTIKUMU</span><small>Vārdi un iegūtie klucīši parādīsies šeit.</small></div>';
@@ -369,7 +375,7 @@ Object.assign(graph,{
   crossingCount(){return 0},obstructionCount(){return 0},optimizeCrossings(){},
   rotateConstellation(list,now){
     if(!this.lastOrbitTime){this.lastOrbitTime=now;return}const elapsed=Math.min(50,Math.max(0,now-this.lastOrbitTime));this.lastOrbitTime=now;
-    if(list.length<2||this.drag||this.pan||this.selected||reduceGraphMotion.matches)return;
+    if(list.length<2||this.drag||this.pan||this.selected||expeditionSummaryOpen||reduceGraphMotion.matches)return;
     const angle=elapsed*.00005,cos=Math.cos(angle),sin=Math.sin(angle),centerX=list.reduce((sum,node)=>sum+node.x,0)/list.length,centerY=list.reduce((sum,node)=>sum+node.y,0)/list.length,targetCenterX=list.reduce((sum,node)=>sum+node.targetX,0)/list.length,targetCenterY=list.reduce((sum,node)=>sum+node.targetY,0)/list.length;
     list.forEach((node,index)=>{const x=node.x-centerX,y=node.y-centerY,targetX=node.targetX-targetCenterX,targetY=node.targetY-targetCenterY,vx=node.vx,vy=node.vy;node.x=centerX+x*cos-y*sin;node.y=centerY+x*sin+y*cos;node.targetX=targetCenterX+targetX*cos-targetY*sin;node.targetY=targetCenterY+targetX*sin+targetY*cos;node.vx=vx*cos-vy*sin;node.vy=vx*sin+vy*cos;if(!Number.isFinite(node.spinSpeed))node.spinSpeed=(index%2?1:-1)*.00016;node.rotation=(node.rotation||0)+elapsed*node.spinSpeed});
   },
@@ -390,12 +396,13 @@ $("#zoomIn").addEventListener("click",()=>graph.setZoom(graph.camera.scale*1.25)
 $("#zoomOut").addEventListener("click",()=>graph.setZoom(graph.camera.scale/1.25));
 $("#resetView").addEventListener("click",()=>graph.resetView());
 
-checkButton.addEventListener("click",checkWord);$("#resetButton").addEventListener("click",resetGame);
+checkButton.addEventListener("click",checkWord);$("#resetButton").addEventListener("click",resetGame);$("#endExpeditionButton").addEventListener("click",openExpeditionSummary);$("#continueExpeditionButton").addEventListener("click",closeExpeditionSummary);$("#newExpeditionButton").addEventListener("click",resetGame);
 mapCheckButton.addEventListener("click",checkWord);
 blocksElement.addEventListener("click",event=>{const button=event.target.closest("[data-block]");if(button)addBlock(button.dataset.block)});
 mapBlocks.addEventListener("click",event=>{const button=event.target.closest("[data-map-block]");if(button)addBlock(button.dataset.mapBlock)});
 assembly.addEventListener("click",event=>{const button=event.target.closest("[data-remove-index]");if(button)removeBlock(Number(button.dataset.removeIndex))});
 mapAssembly.addEventListener("click",event=>{const button=event.target.closest("[data-map-remove]");if(button)removeBlock(Number(button.dataset.mapRemove))});
 unlockChoices.addEventListener("click",event=>{const button=event.target.closest("[data-unlock-option]");if(button)chooseUnlock(Number(button.dataset.unlockOption))});
+window.addEventListener("keydown",event=>{if(event.key==="Escape"&&expeditionSummaryOpen)closeExpeditionSummary()});
 window.addEventListener("resize",()=>graph.resize());
 graph.resize();renderUI();requestAnimationFrame(time=>graph.frame(time));

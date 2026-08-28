@@ -8,7 +8,7 @@
   <title>Vārdu tīkls — ResearchGames.eu</title>
   <link rel="icon" href="assets/brand/researchgames-icon-color.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="tree.css?v=14">
+  <link rel="stylesheet" href="tree.css?v=15">
 </head>
 <body>
   <main class="game-shell">
@@ -20,7 +20,10 @@
         <span>VĀRDU TĪKLS</span>
         <small>LATVIEŠU VALODAS SPĒLE</small>
       </div>
-      <button class="reset" id="resetButton" type="button">↻ SĀKT NO JAUNA</button>
+      <div class="topbar-actions">
+        <button class="end-expedition" id="endExpeditionButton" type="button">BEIGT EKSPEDĪCIJU</button>
+        <button class="reset" id="resetButton" type="button">↻ SĀKT NO JAUNA</button>
+      </div>
     </header>
 
     <section class="hero">
@@ -95,10 +98,22 @@
       <div class="unlock-choices" id="unlockChoices"></div>
     </section>
   </div>
+  <div class="expedition-modal" id="expeditionModal" hidden role="dialog" aria-modal="true" aria-labelledby="expeditionTitle">
+    <section class="expedition-card">
+      <span class="level-kicker">EKSPEDĪCIJAS REZULTĀTI</span>
+      <div class="expedition-title-row"><div><h2 id="expeditionTitle">Tavs vārdu tīkls</h2><p>Ekspedīcija ir apturēta. Vari apskatīt rezultātus un pēc tam turpināt.</p></div><strong id="expeditionScore">0</strong></div>
+      <div class="expedition-stats" id="expeditionStats"></div>
+      <div class="expedition-highlights" id="expeditionHighlights"></div>
+      <div class="expedition-actions">
+        <button type="button" class="secondary" id="continueExpeditionButton">TURPINĀT EKSPEDĪCIJU</button>
+        <button type="button" class="primary" id="newExpeditionButton">SĀKT JAUNU</button>
+      </div>
+    </section>
+  </div>
   <script src="tezaurs-words.js?v=2"></script>
   <script src="tezaurs-index.js?v=8"></script>
   <script src="tezaurs-dialects.js?v=5"></script>
   <script src="dlmdm-morphology.js?v=2"></script>
-  <script src="script.js?v=74"></script>
+  <script src="script.js?v=75"></script>
 </body>
 </html>
